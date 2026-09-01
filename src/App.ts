@@ -111,6 +111,24 @@ export class App {
         <p class="empty">No transcript yet. Choose an engine and record or upload audio.</p>
       </section>
 
+      <section class="card pause-summary-card" id="pause-summary-container" style="display: none;">
+        <div class="pause-summary-header">
+          <span class="pause-icon">⏸️</span>
+          <span class="section-label">Pause Analysis</span>
+        </div>
+        <div id="pause-summary" class="pause-summary"></div>
+      </section>
+
+      <section class="card band-card" id="band-container" style="display: none;">
+        <div class="band-card-header">
+          <span class="band-icon">🎯</span>
+          <span class="section-label">IELTS Band Score</span>
+          <span id="band-evaluator" class="band-evaluator-tag"></span>
+        </div>
+        <div id="band-summary" class="band-summary"></div>
+        <div id="band-details" class="band-details"></div>
+      </section>
+
       <footer class="ftr">
         <span id="footer-text">Speech is processed 100% locally and privately in your browser.</span>
       </footer>
@@ -311,6 +329,26 @@ export class App {
         if (st.lastLatencyMs !== null) engineLabel += ` (server ${st.lastLatencyMs}ms)`;
       }
       this.setStatus(`Done: ${segs.length} segments in ${(latencyMs / 1000).toFixed(2)}s (${speedFactor.toFixed(1)}x Real-Time Speed)${engineLabel}.`);
+
+      // Surface pause analysis if the server reported silences.
+      if (this.transcriber instanceof ServerTranscriber) {
+        const st = this.transcriber as ServerTranscriber;
+        if (st.lastSilences.length > 0) {
+          this.renderPauseSummary(st);
+        } else {
+          this.clearPauseSummary();
+        }
+        // Surface the IELTS band score card. The LLM may not have run
+        // (env flag off or call failed), in which case we fall back to the
+        // always-present deterministic v1 score.
+        if (st.lastBand) {
+          this.renderBandSummary(st, 'llm');
+        } else if (st.lastScore) {
+          this.renderBandSummary(st, 'v1');
+        } else {
+          this.clearBandSummary();
+        }
+      }
     } catch (err) {
       this.setStatus(`Transcription failed: ${(err as Error).message}`);
     } finally {
@@ -394,6 +432,184 @@ export class App {
     this.renderTranscript();
     (this.root.querySelector('#clear') as HTMLButtonElement).disabled = this.segments.length === 0;
     (this.root.querySelector('#copy') as HTMLButtonElement).disabled = this.segments.length === 0;
+  }
+
+  /**
+   * Render the pause-analysis card. Marks long internal silences (>2s)
+   * with an amber badge and shows totals: count, longest gap, trailing silence,
+   * speech-vs-total time, and silence ratio.
+   */
+  private renderPauseSummary(st: ServerTranscriber): void {
+    const container = this.root.querySelector<HTMLElement>('#pause-summary-container');
+    const body = this.root.querySelector<HTMLElement>('#pause-summary');
+    if (!container || !body) return;
+
+    const internal = st.lastSilences.filter((s) => s.kind === 'internal');
+    const trailing = st.lastSilences.find((s) => s.kind === 'trailing');
+    const longest = st.lastSilences.reduce<{ ms: number; at: number } | null>(
+      (acc, s) => (acc === null || s.durationMs > acc.ms ? { ms: s.durationMs, at: s.start } : acc),
+      null,
+    );
+    const longPauses = internal.filter((s) => s.durationMs >= 2000);
+
+    const pct = (st.lastSilenceRatio ?? 0) * 100;
+    const fmtSec = (ms: number): string => `${(ms / 1000).toFixed(2)}s`;
+    const fmtT = (sec: number): string => `${sec.toFixed(2)}s`;
+
+    const overallClass = pct >= 35 ? 'pause-overall high' : pct >= 15 ? 'pause-overall medium' : 'pause-overall low';
+
+    const internalRows = internal.length === 0
+      ? '<div class="pause-empty">No significant internal pauses.</div>'
+      : internal
+          .sort((a, b) => a.start - b.start)
+          .map((s) => {
+            const cls = s.durationMs >= 4000
+              ? 'pause-row very-long'
+              : s.durationMs >= 2000
+                ? 'pause-row long'
+                : 'pause-row short';
+            return `
+              <div class="${cls}">
+                <span class="pause-when">${fmtT(s.start)}–${fmtT(s.end)}</span>
+                <span class="pause-dur">${fmtSec(s.durationMs)}</span>
+                <span class="pause-badge">${s.durationMs >= 4000 ? 'long hesitation' : s.durationMs >= 2000 ? 'notable' : 'minor'}</span>
+              </div>`;
+          })
+          .join('');
+
+    body.innerHTML = `
+      <div class="pause-stats">
+        <div class="pause-stat"><span class="num">${st.lastSilences.length}</span><span class="lbl">total pauses</span></div>
+        <div class="pause-stat"><span class="num">${longPauses.length}</span><span class="lbl">long (≥2s)</span></div>
+        <div class="pause-stat"><span class="num">${longest ? fmtSec(longest.ms) : '—'}</span><span class="lbl">longest</span></div>
+        <div class="pause-stat"><span class="num">${st.lastSpeechDurationSec !== null ? fmtT(st.lastSpeechDurationSec) : '—'}</span><span class="lbl">speech time</span></div>
+        <div class="${overallClass}"><span class="num">${pct.toFixed(0)}%</span><span class="lbl">silence ratio</span></div>
+      </div>
+      ${trailing && trailing.durationMs >= 1500
+        ? `<div class="pause-trailing">⏹ Trailing silence: <b>${fmtSec(trailing.durationMs)}</b> at the end — candidate may have run out of things to say.</div>`
+        : ''}
+      <div class="pause-list">${internalRows}</div>
+    `;
+    container.style.display = 'block';
+  }
+
+  private clearPauseSummary(): void {
+    const container = this.root.querySelector<HTMLElement>('#pause-summary-container');
+    if (container) container.style.display = 'none';
+  }
+
+  /**
+   * Pick a color class for the overall band pill.
+   * IELTS bands: 9=expert, 8=very good, 7=good, 6=competent, 5=modest,
+   * 4=limited, ≤3=extremely limited.
+   */
+  private bandColorClass(band: number): string {
+    if (band >= 8) return 'band-excellent';
+    if (band >= 7) return 'band-good';
+    if (band >= 6) return 'band-competent';
+    if (band >= 5) return 'band-modest';
+    if (band >= 4) return 'band-limited';
+    return 'band-low';
+  }
+
+  /**
+   * Render the IELTS band-score card.
+   *
+   * If the LLM evaluator ran (`source === 'llm'`), we show the full 4-axis
+   * breakdown with rationale and improvement tips. Otherwise we fall back to
+   * the deterministic v1 score — same overall band, no sub-axes.
+   */
+  private renderBandSummary(
+    st: ServerTranscriber,
+    source: 'llm' | 'v1',
+  ): void {
+    const container = this.root.querySelector<HTMLElement>('#band-container');
+    const summaryEl = this.root.querySelector<HTMLElement>('#band-summary');
+    const detailsEl = this.root.querySelector<HTMLElement>('#band-details');
+    const tagEl = this.root.querySelector<HTMLElement>('#band-evaluator');
+    if (!container || !summaryEl || !detailsEl || !tagEl) return;
+
+    const band = st.lastBand;
+    const score = st.lastScore;
+    const overall = band?.overallBand ?? score?.band ?? 0;
+    const bandClass = this.bandColorClass(overall);
+    const fmtBand = (n: number | null | undefined): string =>
+      typeof n === 'number' ? n.toFixed(1) : '—';
+
+    tagEl.textContent = source === 'llm'
+      ? `LLM · ${band?.model ?? 'groq-llm'}`
+      : 'Deterministic v1 (LLM disabled)';
+
+    summaryEl.innerHTML = `
+      <div class="band-pill ${bandClass}">
+        <div class="band-num">${overall.toFixed(1)}</div>
+        <div class="band-scale">/ 9.0</div>
+      </div>
+      <div class="band-meta">
+        <div class="band-meta-row">
+          <span class="lbl">Fluency &amp; Coherence</span>
+          <span class="val">${fmtBand(band?.fluencyCoherence)}</span>
+        </div>
+        <div class="band-meta-row">
+          <span class="lbl">Lexical Resource</span>
+          <span class="val">${fmtBand(band?.lexicalResource)}</span>
+        </div>
+        <div class="band-meta-row">
+          <span class="lbl">Grammatical Range</span>
+          <span class="val">${fmtBand(band?.grammaticalRange)}</span>
+        </div>
+        <div class="band-meta-row">
+          <span class="lbl">Pronunciation</span>
+          <span class="val">${fmtBand(band?.pronunciation)}</span>
+        </div>
+      </div>
+    `;
+
+    if (source === 'llm' && band) {
+      const r = band.rationale;
+      const improvements = band.topThreeImprovements
+        .map((tip) => `<li>${this.escape(tip)}</li>`)
+        .join('');
+      detailsEl.innerHTML = `
+        <div class="band-section">
+          <div class="band-section-title">Examiner notes</div>
+          <div class="band-rationale"><b>Fluency:</b> ${this.escape(r.fluencyCoherence)}</div>
+          <div class="band-rationale"><b>Lexical:</b> ${this.escape(r.lexicalResource)}</div>
+          <div class="band-rationale"><b>Grammar:</b> ${this.escape(r.grammaticalRange)}</div>
+          ${r.pronunciation ? `<div class="band-rationale"><b>Pronunciation:</b> ${this.escape(r.pronunciation)}</div>` : ''}
+        </div>
+        <div class="band-section">
+          <div class="band-section-title">Top 3 improvements</div>
+          <ol class="band-improvements">${improvements}</ol>
+        </div>
+        <div class="band-foot">LLM evaluator latency: ${band.latencyMs}ms · model ${this.escape(band.model)}</div>
+      `;
+    } else if (score) {
+      const f = score.features;
+      detailsEl.innerHTML = `
+        <div class="band-section">
+          <div class="band-section-title">Deterministic v1 components</div>
+          <div class="band-features">
+            <span class="chip">WPM <b>${f.wpm}</b></span>
+            <span class="chip">TTR <b>${(f.typeTokenRatio * 100).toFixed(0)}%</b></span>
+            <span class="chip">avg word <b>${f.avgWordLength}</b></span>
+            <span class="chip">long pauses <b>${f.longPauseCount}</b></span>
+            <span class="chip">longest <b>${f.longestPauseSec.toFixed(2)}s</b></span>
+            <span class="chip">silence <b>${(f.silenceRatio * 100).toFixed(0)}%</b></span>
+          </div>
+        </div>
+        <div class="band-foot">Enable GROQ_LLM_ENABLED=1 on the backend for full sub-axis evaluation.</div>
+      `;
+    } else {
+      detailsEl.innerHTML = '';
+    }
+
+    container.style.display = 'block';
+  }
+
+  private clearBandSummary(): void {
+    const container = this.root.querySelector<HTMLElement>('#band-container');
+    if (container) container.style.display = 'none';
   }
 
   private renderTranscript(): void {

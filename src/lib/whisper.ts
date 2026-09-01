@@ -6,6 +6,21 @@ export interface WhisperSegment {
   t0: number; // seconds
   t1: number; // seconds
   text: string;
+  noSpeechProb?: number;
+  avgLogProb?: number;
+}
+
+export interface WhisperWord {
+  word: string;
+  start: number; // seconds
+  end: number; // seconds
+}
+
+export interface WhisperSilence {
+  start: number; // seconds
+  end: number; // seconds
+  durationMs: number;
+  kind: 'leading' | 'internal' | 'trailing';
 }
 
 export interface WhisperParams {
@@ -13,4 +28,53 @@ export interface WhisperParams {
   translate?: boolean;
   threads?: number;
   startedAt?: number;
+}
+
+/**
+ * Sub-band rationale for a single IELTS criterion. The LLM evaluator returns
+ * one of these per axis (fluency, lexical, grammar, pronunciation).
+ */
+export interface WhisperBandRationale {
+  fluencyCoherence: string;
+  lexicalResource: string;
+  grammaticalRange: string;
+  pronunciation: string;
+}
+
+export interface WhisperBandEvaluation {
+  evaluator: string; // e.g. "groq-llm" or "deterministic-v1"
+  model: string;
+  fluencyCoherence: number; // 0..9
+  lexicalResource: number;  // 0..9
+  grammaticalRange: number; // 0..9
+  pronunciation: number | null; // null until v3 (audio-feature pipeline)
+  overallBand: number;      // 0..9, half-band increments
+  rationale: WhisperBandRationale;
+  topThreeImprovements: string[];
+  latencyMs: number;
+}
+
+/** Mirrors the deterministic v1 scorer (always present, may be null on tiny clips). */
+export interface WhisperDeterministicScore {
+  band: number;
+  pronunciationScore: number | null;
+  components: {
+    rateBand: number;
+    pausePenalty: number;
+    lexicalBonus: number;
+  };
+  features: {
+    wpm: number;
+    typeTokenRatio: number;
+    avgWordLength: number;
+    discourseMarkersPerMin: number;
+    fillerDensityPer100: number;
+    longPauseCount: number;
+    longestPauseSec: number;
+    trailingSilenceSec: number;
+    silenceRatio: number;
+    avgSentenceLength: number;
+    complexStructuresPerMin: number;
+    totalLongPauseSec: number;
+  };
 }

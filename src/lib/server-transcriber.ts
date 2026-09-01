@@ -1,4 +1,10 @@
-import type { WhisperSegment } from './whisper';
+import type {
+  WhisperBandEvaluation,
+  WhisperDeterministicScore,
+  WhisperSegment,
+  WhisperSilence,
+  WhisperWord,
+} from './whisper';
 
 export interface ITranscriber {
   load(onProgress?: (msg: string) => void): Promise<void>;
@@ -14,6 +20,20 @@ export class ServerTranscriber implements ITranscriber {
   public lastModelUsed: string | null = null;
   /** Latency reported by the most recent transcribe() call (ms). */
   public lastLatencyMs: number | null = null;
+  /** Words reported by the most recent transcribe() call. */
+  public lastWords: WhisperWord[] = [];
+  /** Silences reported by the most recent transcribe() call. */
+  public lastSilences: WhisperSilence[] = [];
+  /** Audio duration in seconds (server-measured) from the most recent call. */
+  public lastAudioDurationSec: number | null = null;
+  /** Speech duration in seconds (audio minus leading+trailing silence). */
+  public lastSpeechDurationSec: number | null = null;
+  /** Fraction of the clip that was silence (0..1). */
+  public lastSilenceRatio: number | null = null;
+  /** Deterministic v1 score (always present on successful response, may be null on tiny clips). */
+  public lastScore: WhisperDeterministicScore | null = null;
+  /** LLM-based band evaluation. Null when GROQ_LLM_ENABLED=0 or the LLM call failed. */
+  public lastBand: WhisperBandEvaluation | null = null;
 
   constructor(
     private readonly serverUrl: string = '/api',
@@ -104,7 +124,14 @@ export class ServerTranscriber implements ITranscriber {
       engineUsed?: string;
       model?: string;
       latencyMs?: number;
+      audioDurationSec?: number;
+      speechDurationSec?: number;
+      silenceRatio?: number;
       segments: WhisperSegment[];
+      words?: WhisperWord[];
+      silences?: WhisperSilence[];
+      score?: WhisperDeterministicScore | null;
+      band?: WhisperBandEvaluation | null;
       error?: string;
     };
 
@@ -115,6 +142,13 @@ export class ServerTranscriber implements ITranscriber {
     this.lastEngineUsed = data.engineUsed ?? null;
     this.lastModelUsed = data.model ?? null;
     this.lastLatencyMs = typeof data.latencyMs === 'number' ? data.latencyMs : null;
+    this.lastWords = Array.isArray(data.words) ? data.words : [];
+    this.lastSilences = Array.isArray(data.silences) ? data.silences : [];
+    this.lastAudioDurationSec = typeof data.audioDurationSec === 'number' ? data.audioDurationSec : null;
+    this.lastSpeechDurationSec = typeof data.speechDurationSec === 'number' ? data.speechDurationSec : null;
+    this.lastSilenceRatio = typeof data.silenceRatio === 'number' ? data.silenceRatio : null;
+    this.lastScore = data.score ?? null;
+    this.lastBand = data.band ?? null;
 
     return data.segments || [];
   }

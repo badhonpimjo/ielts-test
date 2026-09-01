@@ -450,3 +450,140 @@ button.ghost:hover:not(:disabled) {
     color: #94a3b8;
   }
 }
+
+/* ----- Pause Analysis card ----- */
+.pause-summary-card { margin-top: 16px; }
+.pause-summary-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pause-summary { display: flex; flex-direction: column; gap: 12px; }
+.pause-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.pause-stat {
+  background: #f1f5f9; border-radius: 8px; padding: 10px 12px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+}
+.pause-stat .num { font-size: 1.25rem; font-weight: 600; color: #0f172a; }
+.pause-stat .lbl { font-size: 0.78rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+.pause-overall { border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.pause-overall .num { font-size: 1.25rem; font-weight: 600; }
+.pause-overall .lbl { font-size: 0.78rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+.pause-overall.low { background: #ecfdf5; }
+.pause-overall.low .num { color: #047857; }
+.pause-overall.medium { background: #fffbeb; }
+.pause-overall.medium .num { color: #b45309; }
+.pause-overall.high { background: #fef2f2; }
+.pause-overall.high .num { color: #b91c1c; }
+
+.pause-trailing {
+  font-size: 0.9rem; color: #92400e; background: #fffbeb;
+  border-left: 3px solid #f59e0b; padding: 8px 12px; border-radius: 6px;
+}
+
+.pause-list { display: flex; flex-direction: column; gap: 6px; }
+.pause-row {
+  display: grid; grid-template-columns: 110px 80px 1fr; gap: 10px; align-items: center;
+  padding: 6px 10px; border-radius: 6px; font-size: 0.88rem;
+}
+.pause-row .pause-when { color: #475569; font-variant-numeric: tabular-nums; }
+.pause-row .pause-dur { font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; }
+.pause-row .pause-badge {
+  font-size: 0.74rem; padding: 2px 8px; border-radius: 999px; justify-self: start;
+}
+.pause-row.short { background: #f8fafc; }
+.pause-row.short .pause-badge { background: #e2e8f0; color: #475569; }
+.pause-row.long { background: #fffbeb; }
+.pause-row.long .pause-badge { background: #fde68a; color: #92400e; }
+.pause-row.very-long { background: #fef2f2; border-left: 3px solid #ef4444; }
+.pause-row.very-long .pause-badge { background: #fecaca; color: #991b1b; }
+.pause-empty { color: #94a3b8; font-size: 0.88rem; padding: 6px 10px; }
+
+@media (prefers-color-scheme: dark) {
+  .pause-stat { background: #1e293b; }
+  .pause-stat .num { color: #f1f5f9; }
+  .pause-stat .lbl { color: #94a3b8; }
+  .pause-row.short { background: #0f172a; }
+  .pause-row.short .pause-badge { background: #334155; color: #cbd5e1; }
+  .pause-trailing { color: #fde68a; background: #422006; border-left-color: #f59e0b; }
+}
+
+/* ----- IELTS Band Score card ----- */
+.band-card { margin-top: 16px; }
+.band-card-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+.band-card-header .section-label { font-weight: 600; }
+.band-evaluator-tag {
+  font-size: 0.72rem; padding: 3px 10px; border-radius: 999px;
+  background: #eef2ff; color: #4338ca; letter-spacing: 0.02em;
+}
+
+.band-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  align-items: center;
+}
+.band-pill {
+  border-radius: 14px; padding: 14px 22px; min-width: 130px;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  background: #f1f5f9;
+}
+.band-pill .band-num {
+  font-size: 2.6rem; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.band-pill .band-scale { font-size: 0.85rem; color: #64748b; margin-top: 4px; }
+.band-pill.band-excellent { background: #ecfdf5; }
+.band-pill.band-excellent .band-num { color: #047857; }
+.band-pill.band-good { background: #ecfeff; }
+.band-pill.band-good .band-num { color: #0e7490; }
+.band-pill.band-competent { background: #eff6ff; }
+.band-pill.band-competent .band-num { color: #1d4ed8; }
+.band-pill.band-modest { background: #fefce8; }
+.band-pill.band-modest .band-num { color: #a16207; }
+.band-pill.band-limited { background: #fff7ed; }
+.band-pill.band-limited .band-num { color: #c2410c; }
+.band-pill.band-low { background: #fef2f2; }
+.band-pill.band-low .band-num { color: #b91c1c; }
+
+.band-meta { display: flex; flex-direction: column; gap: 6px; }
+.band-meta-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 6px 10px; border-radius: 6px; background: #f8fafc;
+  font-size: 0.92rem;
+}
+.band-meta-row .lbl { color: #475569; }
+.band-meta-row .val { font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; }
+
+.band-details { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
+.band-section-title {
+  font-size: 0.78rem; color: #64748b; text-transform: uppercase;
+  letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.band-rationale { font-size: 0.9rem; line-height: 1.5; margin-bottom: 6px; color: #1e293b; }
+.band-improvements {
+  margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px;
+  font-size: 0.92rem; color: #1e293b;
+}
+.band-features { display: flex; flex-wrap: wrap; gap: 6px; }
+.band-features .chip {
+  background: #f1f5f9; border-radius: 999px; padding: 4px 12px;
+  font-size: 0.82rem; color: #475569;
+}
+.band-features .chip b { color: #0f172a; margin-left: 4px; }
+.band-foot {
+  font-size: 0.78rem; color: #94a3b8; border-top: 1px dashed #e2e8f0;
+  padding-top: 8px; margin-top: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .band-evaluator-tag { background: #312e81; color: #c7d2fe; }
+  .band-pill { background: #1e293b; }
+  .band-pill .band-scale { color: #94a3b8; }
+  .band-meta-row { background: #0f172a; }
+  .band-meta-row .lbl { color: #94a3b8; }
+  .band-meta-row .val { color: #f1f5f9; }
+  .band-rationale { color: #e2e8f0; }
+  .band-improvements { color: #e2e8f0; }
+  .band-features .chip { background: #1e293b; color: #94a3b8; }
+  .band-features .chip b { color: #f1f5f9; }
+  .band-foot { color: #64748b; border-top-color: #334155; }
+}
