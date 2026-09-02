@@ -59,6 +59,11 @@ export interface WhisperVocabUpgrade {
   level?: string;
 }
 
+export interface WhisperGrammaticalStructure {
+  type: string;
+  example: string;
+}
+
 export interface WhisperBandEvaluation {
   evaluator: string; // e.g. "groq-llm"
   model: string;
@@ -66,11 +71,13 @@ export interface WhisperBandEvaluation {
   lexicalResource: number;  // 0..9
   grammaticalRange: number; // 0..9
   pronunciation: number | null; // null (text-only scope)
+  indicativeBand?: number;  // 0..9, 3-axis indicative band
   overallBand: number;      // 0..9, official IELTS rounded
   rationale: WhisperBandRationale;
   advancedVocabulary?: WhisperAdvancedVocabItem[];
   vocabularyUpgrades?: WhisperVocabUpgrade[];
   grammarErrors?: WhisperGrammarError[];
+  grammaticalStructuresUsed?: WhisperGrammaticalStructure[];
   topThreeImprovements: string[];
   latencyMs: number;
 }

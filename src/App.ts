@@ -641,6 +641,29 @@ export class App {
         `;
       }
 
+      let structHtml = '';
+      if (Array.isArray(band.grammaticalStructuresUsed) && band.grammaticalStructuresUsed.length > 0) {
+        const formatType = (t: string) => t.replace(/_/g, ' ');
+        structHtml = `
+          <div class="band-section">
+            <div class="band-section-title">Grammatical Structures Identified (Range Evidence)</div>
+            <div class="structures-list">
+              ${band.grammaticalStructuresUsed
+                .map(
+                  (s) => `
+                <div class="structure-card">
+                  <div class="structure-header">
+                    <span class="structure-badge">${this.escape(formatType(s.type))}</span>
+                  </div>
+                  <div class="structure-example">"${this.escape(s.example)}"</div>
+                </div>`,
+                )
+                .join('')}
+            </div>
+          </div>
+        `;
+      }
+
       detailsEl.innerHTML = `
         <div class="band-section">
           <div class="band-section-title">Examiner Feedback</div>
@@ -649,6 +672,7 @@ export class App {
           <div class="band-rationale"><b>Grammatical Range:</b> ${this.escape(r.grammaticalRange)}</div>
         </div>
         ${grammarHtml}
+        ${structHtml}
         ${vocabHtml}
         ${upgradeHtml}
         <div class="band-section">

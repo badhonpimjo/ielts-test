@@ -650,6 +650,42 @@ button.ghost:hover:not(:disabled) {
   margin-left: auto;
 }
 
+/* Grammatical Structures Identified */
+.structures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.structure-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #6366f1;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.structure-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.structure-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #eef2ff;
+  color: #4338ca;
+  text-transform: capitalize;
+}
+.structure-example {
+  font-size: 0.86rem;
+  color: #334155;
+  font-style: italic;
+}
+
 .band-features { display: flex; flex-wrap: wrap; gap: 6px; }
 .band-features .chip {
   background: #f1f5f9; border-radius: 999px; padding: 4px 12px;
