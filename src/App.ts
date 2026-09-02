@@ -11,16 +11,13 @@ export interface ITranscriber {
   load(onProgress?: (msg: string) => void): Promise<void>;
   transcribe(
     pcm: Float32Array,
-    options?: WhisperParams | { startedAt?: number; [key: string]: unknown },
+    options?: WhisperParams | { startedAt?: number; question?: string; part?: 1 | 2 | 3; [key: string]: unknown },
   ): Promise<WhisperSegment[]>;
   dispose?(): void;
 }
 
 export class App {
   private recorder: AudioRecorder | null = null;
-  // Lazily assigned by initServerEngine() -> switchEngine(). There is only
-  // one engine now (server-side, routed via Groq), so no in-browser worker
-  // is ever spawned.
   private transcriber: ITranscriber | null = null;
   private activeEngineKey = '';
 
@@ -45,7 +42,7 @@ export class App {
         <div class="hdr-top">
           <div>
             <h1>IELTS Audio-to-Text POC</h1>
-            <p class="sub">High-performance speech-to-text transcription powered by OpenAI Whisper.</p>
+            <p class="sub">High-performance speech-to-text and IELTS Band Score evaluation powered by Whisper &amp; LLM.</p>
           </div>
           <div id="device-badge" class="device-badge">Detecting hardware…</div>
         </div>
@@ -53,13 +50,27 @@ export class App {
 
       <section class="card engine-card">
         <div class="engine-selector-group">
-          <label for="engine-select" class="engine-label">🧠 AI Engine & Model:</label>
+          <label for="engine-select" class="engine-label">🧠 AI Engine &amp; Model:</label>
           <select id="engine-select" class="engine-select">
-            <option value="server-base" selected>⚡ Server (Groq Whisper Turbo) — Fast Real-Time & High Accuracy</option>
+            <option value="server-base" selected>⚡ Server (Groq Whisper Turbo) — Fast Real-Time &amp; High Accuracy</option>
           </select>
         </div>
         <div id="engine-info" class="engine-info">🚀 Server Backend via Groq Whisper Turbo (0 MB client download, ultra-fast real-time transcription).</div>
-        
+      </section>
+
+      <section class="card prompt-card">
+        <div class="prompt-header">
+          <span class="prompt-icon">📝</span>
+          <span class="section-label">IELTS Speaking Prompt / Question (Optional)</span>
+        </div>
+        <div class="prompt-inputs">
+          <select id="part-select" class="part-select">
+            <option value="1" selected>Part 1 (Short Q&amp;A)</option>
+            <option value="2">Part 2 (Cue Card / Long Turn)</option>
+            <option value="3">Part 3 (Discussion)</option>
+          </select>
+          <input type="text" id="question-input" class="question-input" placeholder="e.g. Describe a difficult problem you solved..." />
+        </div>
       </section>
 
       <section class="card mode-card">
@@ -130,7 +141,7 @@ export class App {
       </section>
 
       <footer class="ftr">
-        <span id="footer-text">Speech is processed 100% locally and privately in your browser.</span>
+        <span id="footer-text">Speech is processed privately and securely.</span>
       </footer>
     `;
 
@@ -154,13 +165,8 @@ export class App {
   private async initServerEngine(): Promise<void> {
     const badge = this.root.querySelector<HTMLElement>('#device-badge')!;
     const select = this.root.querySelector<HTMLSelectElement>('#engine-select')!;
-    // Use a relative /api base — same-origin in dev, proxied by your hosting
-    // provider in prod. ServerTranscriber will surface a clear error if the
-    // backend is unreachable.
     const apiBase = '/api';
 
-    // Server is the only engine — always point at it. If the backend is
-    // down, the ServerTranscriber.load() call will surface a clear error.
     try {
       const serverRes = await fetch(`${apiBase}/health`);
       if (serverRes.ok) {
@@ -184,22 +190,10 @@ export class App {
 
     this.activeEngineKey = engineKey;
     const infoEl = this.root.querySelector<HTMLElement>('#engine-info');
-
-    // Same `/api` base as in initServerEngine() — relative in dev, proxied
-    // by the hosting provider in prod.
     const apiBase = '/api';
 
-    switch (engineKey) {
-      case 'server-base':
-        this.transcriber = new ServerTranscriber(apiBase, 'base');
-        if (infoEl) infoEl.textContent = '🚀 Server Backend via Groq Whisper Turbo (0 MB client download, ultra-fast real-time transcription).';
-        break;
-
-      default:
-        this.transcriber = new ServerTranscriber(apiBase, 'base');
-        if (infoEl) infoEl.textContent = '🚀 Server Backend via Groq Whisper Turbo (0 MB client download, ultra-fast real-time transcription).';
-        break;
-    }
+    this.transcriber = new ServerTranscriber(apiBase, 'base');
+    if (infoEl) infoEl.textContent = '🚀 Server Backend via Groq Whisper Turbo (0 MB client download, ultra-fast real-time transcription).';
 
     if (this.lastPcm) {
       this.setStatus(`Switched engine to ${engineKey}. Audio ready—click "⚡ Transcribe Audio" to run with this model.`);
@@ -246,7 +240,6 @@ export class App {
     this.updateRecordingUI(true);
     this.setStatus('Recording audio… Speak now.');
 
-    // Background pre-warm the active model pipeline while user is speaking (0ms cold start)
     void this.transcriber?.load();
 
     const timerEl = this.root.querySelector<HTMLElement>('#timer')!;
@@ -275,7 +268,6 @@ export class App {
     const result = await this.recorder.stop();
     this.recorder = null;
 
-    // Show audio player preview
     const container = this.root.querySelector<HTMLElement>('#audio-preview-container')!;
     const audioEl = this.root.querySelector<HTMLAudioElement>('#audio-preview')!;
     audioEl.src = result.audioUrl;
@@ -286,7 +278,6 @@ export class App {
       return;
     }
 
-    // Save PCM for manual / repeat transcription with any model
     this.lastPcm = result.pcm;
     this.lastAudioDuration = result.durationSeconds;
 
@@ -310,6 +301,11 @@ export class App {
 
     this.setStatus(`Transcribing ${this.lastAudioDuration.toFixed(1)}s with current engine…`);
 
+    const questionInput = this.root.querySelector<HTMLInputElement>('#question-input');
+    const partSelect = this.root.querySelector<HTMLSelectElement>('#part-select');
+    const question = questionInput?.value.trim() || undefined;
+    const part = partSelect?.value ? (Number(partSelect.value) as 1 | 2 | 3) : undefined;
+
     try {
       if (!this.transcriber) {
         this.setStatus('No engine selected yet.');
@@ -317,11 +313,11 @@ export class App {
       }
       await this.transcriber.load((m) => this.setStatus(m));
       const t0 = performance.now();
-      const segs = await this.transcriber.transcribe(this.lastPcm);
+      const segs = await this.transcriber.transcribe(this.lastPcm, { question, part });
       const latencyMs = Math.round(performance.now() - t0);
       const speedFactor = this.lastAudioDuration / Math.max(0.01, latencyMs / 1000);
       this.appendSegments(segs);
-      // Surface the engine + latency the server reported.
+
       let engineLabel = '';
       if (this.transcriber instanceof ServerTranscriber) {
         const st = this.transcriber as ServerTranscriber;
@@ -330,7 +326,6 @@ export class App {
       }
       this.setStatus(`Done: ${segs.length} segments in ${(latencyMs / 1000).toFixed(2)}s (${speedFactor.toFixed(1)}x Real-Time Speed)${engineLabel}.`);
 
-      // Surface pause analysis if the server reported silences.
       if (this.transcriber instanceof ServerTranscriber) {
         const st = this.transcriber as ServerTranscriber;
         if (st.lastSilences.length > 0) {
@@ -338,9 +333,7 @@ export class App {
         } else {
           this.clearPauseSummary();
         }
-        // Surface the IELTS band score card. The LLM may not have run
-        // (env flag off or call failed), in which case we fall back to the
-        // always-present deterministic v1 score.
+
         if (st.lastBand) {
           this.renderBandSummary(st, 'llm');
         } else if (st.lastScore) {
@@ -356,9 +349,6 @@ export class App {
     }
   }
 
-  /**
-   * Delete the current audio from memory and hide player
-   */
   private deleteCurrentAudio(): void {
     this.lastPcm = null;
     this.lastAudioDuration = 0;
@@ -396,14 +386,10 @@ export class App {
     }
   }
 
-  /**
-   * Mode 2: File Upload
-   */
   private async handleFile(file: File | undefined): Promise<void> {
     if (!file) return;
     this.setStatus(`Decoding ${file.name}…`);
 
-    // Show preview player for uploaded file
     const container = this.root.querySelector<HTMLElement>('#audio-preview-container')!;
     const audioEl = this.root.querySelector<HTMLAudioElement>('#audio-preview')!;
     audioEl.src = URL.createObjectURL(file);
@@ -434,11 +420,6 @@ export class App {
     (this.root.querySelector('#copy') as HTMLButtonElement).disabled = this.segments.length === 0;
   }
 
-  /**
-   * Render the pause-analysis card. Marks long internal silences (>2s)
-   * with an amber badge and shows totals: count, longest gap, trailing silence,
-   * speech-vs-total time, and silence ratio.
-   */
   private renderPauseSummary(st: ServerTranscriber): void {
     const container = this.root.querySelector<HTMLElement>('#pause-summary-container');
     const body = this.root.querySelector<HTMLElement>('#pause-summary');
@@ -486,7 +467,7 @@ export class App {
         <div class="${overallClass}"><span class="num">${pct.toFixed(0)}%</span><span class="lbl">silence ratio</span></div>
       </div>
       ${trailing && trailing.durationMs >= 1500
-        ? `<div class="pause-trailing">⏹ Trailing silence: <b>${fmtSec(trailing.durationMs)}</b> at the end — candidate may have run out of things to say.</div>`
+        ? `<div class="pause-trailing">⏹ Trailing silence: <b>${fmtSec(trailing.durationMs)}</b> before stop clicked (excluded from scoring).</div>`
         : ''}
       <div class="pause-list">${internalRows}</div>
     `;
@@ -498,11 +479,6 @@ export class App {
     if (container) container.style.display = 'none';
   }
 
-  /**
-   * Pick a color class for the overall band pill.
-   * IELTS bands: 9=expert, 8=very good, 7=good, 6=competent, 5=modest,
-   * 4=limited, ≤3=extremely limited.
-   */
   private bandColorClass(band: number): string {
     if (band >= 8) return 'band-excellent';
     if (band >= 7) return 'band-good';
@@ -512,13 +488,6 @@ export class App {
     return 'band-low';
   }
 
-  /**
-   * Render the IELTS band-score card.
-   *
-   * If the LLM evaluator ran (`source === 'llm'`), we show the full 4-axis
-   * breakdown with rationale and improvement tips. Otherwise we fall back to
-   * the deterministic v1 score — same overall band, no sub-axes.
-   */
   private renderBandSummary(
     st: ServerTranscriber,
     source: 'llm' | 'v1',
@@ -543,12 +512,12 @@ export class App {
     summaryEl.innerHTML = `
       <div class="band-pill ${bandClass}">
         <div class="band-num">${overall.toFixed(1)}</div>
-        <div class="band-scale">/ 9.0</div>
+        <div class="band-scale">/ 9.0 (Official Rounding)</div>
       </div>
       <div class="band-meta">
         <div class="band-meta-row">
           <span class="lbl">Fluency &amp; Coherence</span>
-          <span class="val">${fmtBand(band?.fluencyCoherence)}</span>
+          <span class="val">${fmtBand(band?.fluencyCoherence ?? score?.components.rateBand)}</span>
         </div>
         <div class="band-meta-row">
           <span class="lbl">Lexical Resource</span>
@@ -558,9 +527,9 @@ export class App {
           <span class="lbl">Grammatical Range</span>
           <span class="val">${fmtBand(band?.grammaticalRange)}</span>
         </div>
-        <div class="band-meta-row">
+        <div class="band-meta-row sub-excluded">
           <span class="lbl">Pronunciation</span>
-          <span class="val">${fmtBand(band?.pronunciation)}</span>
+          <span class="val">Excluded in v1</span>
         </div>
       </div>
     `;
@@ -570,16 +539,88 @@ export class App {
       const improvements = band.topThreeImprovements
         .map((tip) => `<li>${this.escape(tip)}</li>`)
         .join('');
+
+      let grammarHtml = '';
+      if (Array.isArray(band.grammarErrors) && band.grammarErrors.length > 0) {
+        grammarHtml = `
+          <div class="band-section">
+            <div class="band-section-title">Grammar Diagnostics (${band.grammarErrors.length} detected)</div>
+            <div class="grammar-errors-list">
+              ${band.grammarErrors
+                .map(
+                  (err) => `
+                <div class="grammar-error-card">
+                  <div class="grammar-error-header">
+                    <span class="grammar-badge">${this.escape(err.category)}</span>
+                  </div>
+                  <div class="grammar-error-diff">
+                    <span class="grammar-wrong">${this.escape(err.quote)}</span>
+                    <span class="grammar-arrow">➔</span>
+                    <span class="grammar-right">${this.escape(err.correction)}</span>
+                  </div>
+                  <div class="grammar-error-exp">${this.escape(err.explanation)}</div>
+                </div>`,
+                )
+                .join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      let vocabHtml = '';
+      if (Array.isArray(band.advancedVocabulary) && band.advancedVocabulary.length > 0) {
+        vocabHtml = `
+          <div class="band-section">
+            <div class="band-section-title">Advanced Vocabulary &amp; Collocations (C1/C2)</div>
+            <div class="vocab-chips">
+              ${band.advancedVocabulary
+                .map(
+                  (v) => `
+                <span class="chip-vocab ${v.level === 'C2' ? 'chip-c2' : v.level === 'B2' ? 'chip-b2' : 'chip-c1'}">
+                  <span class="vocab-lvl">${this.escape(v.level)}</span>
+                  <span class="vocab-text">${this.escape(v.phrase)}</span>
+                </span>`,
+                )
+                .join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      let upgradeHtml = '';
+      if (Array.isArray(band.vocabularyUpgrades) && band.vocabularyUpgrades.length > 0) {
+        upgradeHtml = `
+          <div class="band-section">
+            <div class="band-section-title">Vocabulary Upgrades</div>
+            <div class="vocab-upgrades-list">
+              ${band.vocabularyUpgrades
+                .map(
+                  (u) => `
+                <div class="upgrade-row">
+                  <span class="upgrade-orig">${this.escape(u.original)}</span>
+                  <span class="upgrade-arrow">➔</span>
+                  <span class="upgrade-sug">${this.escape(u.suggestion)}</span>
+                  ${u.level ? `<span class="upgrade-lvl">${this.escape(u.level)}</span>` : ''}
+                </div>`,
+                )
+                .join('')}
+            </div>
+          </div>
+        `;
+      }
+
       detailsEl.innerHTML = `
         <div class="band-section">
-          <div class="band-section-title">Examiner notes</div>
-          <div class="band-rationale"><b>Fluency:</b> ${this.escape(r.fluencyCoherence)}</div>
-          <div class="band-rationale"><b>Lexical:</b> ${this.escape(r.lexicalResource)}</div>
-          <div class="band-rationale"><b>Grammar:</b> ${this.escape(r.grammaticalRange)}</div>
-          ${r.pronunciation ? `<div class="band-rationale"><b>Pronunciation:</b> ${this.escape(r.pronunciation)}</div>` : ''}
+          <div class="band-section-title">Examiner Feedback</div>
+          <div class="band-rationale"><b>Fluency &amp; Coherence:</b> ${this.escape(r.fluencyCoherence)}</div>
+          <div class="band-rationale"><b>Lexical Resource:</b> ${this.escape(r.lexicalResource)}</div>
+          <div class="band-rationale"><b>Grammatical Range:</b> ${this.escape(r.grammaticalRange)}</div>
         </div>
+        ${grammarHtml}
+        ${vocabHtml}
+        ${upgradeHtml}
         <div class="band-section">
-          <div class="band-section-title">Top 3 improvements</div>
+          <div class="band-section-title">Top 3 Improvements</div>
           <ol class="band-improvements">${improvements}</ol>
         </div>
         <div class="band-foot">LLM evaluator latency: ${band.latencyMs}ms · model ${this.escape(band.model)}</div>

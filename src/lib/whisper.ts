@@ -41,15 +41,36 @@ export interface WhisperBandRationale {
   pronunciation: string;
 }
 
+export interface WhisperGrammarError {
+  category: string;
+  quote: string;
+  correction: string;
+  explanation: string;
+}
+
+export interface WhisperAdvancedVocabItem {
+  phrase: string;
+  level: 'C1' | 'C2' | 'B2';
+}
+
+export interface WhisperVocabUpgrade {
+  original: string;
+  suggestion: string;
+  level?: string;
+}
+
 export interface WhisperBandEvaluation {
-  evaluator: string; // e.g. "groq-llm" or "deterministic-v1"
+  evaluator: string; // e.g. "groq-llm"
   model: string;
   fluencyCoherence: number; // 0..9
   lexicalResource: number;  // 0..9
   grammaticalRange: number; // 0..9
-  pronunciation: number | null; // null until v3 (audio-feature pipeline)
-  overallBand: number;      // 0..9, half-band increments
+  pronunciation: number | null; // null (text-only scope)
+  overallBand: number;      // 0..9, official IELTS rounded
   rationale: WhisperBandRationale;
+  advancedVocabulary?: WhisperAdvancedVocabItem[];
+  vocabularyUpgrades?: WhisperVocabUpgrade[];
+  grammarErrors?: WhisperGrammarError[];
   topThreeImprovements: string[];
   latencyMs: number;
 }

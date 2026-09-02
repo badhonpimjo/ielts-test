@@ -6,9 +6,15 @@ import type {
   WhisperWord,
 } from './whisper';
 
+export interface TranscribeOptions {
+  startedAt?: number;
+  question?: string;
+  part?: 1 | 2 | 3;
+}
+
 export interface ITranscriber {
   load(onProgress?: (msg: string) => void): Promise<void>;
-  transcribe(pcm: Float32Array, options?: { startedAt?: number }): Promise<WhisperSegment[]>;
+  transcribe(pcm: Float32Array, options?: TranscribeOptions): Promise<WhisperSegment[]>;
   dispose?(): void;
 }
 
@@ -52,8 +58,6 @@ export class ServerTranscriber implements ITranscriber {
     try {
       res = await fetch(`${this.serverUrl}/health?model=${this.model}`);
     } catch (err) {
-      // Detect the most common cause: an HTTPS page (Vercel) trying to call
-      // an http:// backend. Browsers block this as mixed active content.
       const pageIsHttps =
         typeof window !== 'undefined' && window.location?.protocol === 'https:';
       const backendIsHttp = this.serverUrl.startsWith('http://');
@@ -83,7 +87,7 @@ export class ServerTranscriber implements ITranscriber {
   /**
    * Send mono 16 kHz Float32 PCM audio to backend server for transcription.
    */
-  async transcribe(pcm: Float32Array): Promise<WhisperSegment[]> {
+  async transcribe(pcm: Float32Array, options?: TranscribeOptions): Promise<WhisperSegment[]> {
     if (!this.isReady) {
       await this.load();
     }
@@ -97,9 +101,13 @@ export class ServerTranscriber implements ITranscriber {
     const formData = new FormData();
     formData.append('audio', blob, 'audio.pcm');
 
+    const params = new URLSearchParams({ model: this.model });
+    if (options?.question) params.set('question', options.question);
+    if (options?.part) params.set('part', String(options.part));
+
     let res: Response;
     try {
-      res = await fetch(`${this.serverUrl}/transcribe?model=${this.model}`, {
+      res = await fetch(`${this.serverUrl}/transcribe?${params.toString()}`, {
         method: 'POST',
         body: formData,
       });
