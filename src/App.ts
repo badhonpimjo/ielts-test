@@ -65,9 +65,10 @@ export class App {
         </div>
         <div class="prompt-inputs">
           <select id="part-select" class="part-select">
-            <option value="1" selected>Part 1 (Short Q&amp;A)</option>
-            <option value="2">Part 2 (Cue Card / Long Turn)</option>
-            <option value="3">Part 3 (Discussion)</option>
+            <option value="" selected>— select part —</option>
+            <option value="1">Part 1 · Short Q&amp;A (≤ 45s)</option>
+            <option value="2">Part 2 · Cue Card / Long Turn (60–120s)</option>
+            <option value="3">Part 3 · Discussion (30–60s per answer)</option>
           </select>
           <input type="text" id="question-input" class="question-input" placeholder="e.g. Describe a difficult problem you solved..." />
         </div>
@@ -284,7 +285,29 @@ export class App {
     const labelEl = this.root.querySelector<HTMLElement>('#audio-preview-label');
     if (labelEl) labelEl.textContent = `🎧 Recorded Audio (${result.durationSeconds.toFixed(1)}s):`;
 
-    this.setStatus(`Audio recorded (${result.durationSeconds.toFixed(1)}s). Select your model and click "Transcribe Audio".`);
+    // Auto-detect IELTS part from duration — ONLY Part 2 has a distinctive signature.
+    // Part 1 (15–45s) and Part 3 (30–60s) overlap completely and cannot be told apart
+    // by duration alone. We only auto-select Part 2 (60–150s monologue). For everything
+    // else, default to Part 1 as the most common single-answer recording, but show a
+    // reminder so the user can correct it if needed.
+    const partSelect = this.root.querySelector<HTMLSelectElement>('#part-select');
+    if (partSelect && !partSelect.value) {
+      const dur = result.durationSeconds;
+      if (dur >= 55 && dur <= 150) {
+        // Part 2 is the only part reliably identifiable by duration
+        partSelect.value = '2';
+        this.setStatus(`Audio recorded (${dur.toFixed(1)}s) — looks like Part 2 (Long Turn). Sending for evaluation… ✏️ Change part if needed.`);
+      } else {
+        // Part 1 and Part 3 are indistinguishable by time — default Part 1, user must correct for Part 3
+        partSelect.value = '1';
+        this.setStatus(`Audio recorded (${dur.toFixed(1)}s) — defaulted to Part 1. ✏️ Change to Part 3 if this is a discussion answer.`);
+      }
+    } else {
+      this.setStatus(`Audio recorded (${result.durationSeconds.toFixed(1)}s). Sending for evaluation…`);
+    }
+
+    // Auto-transcribe immediately — no need to click "Transcribe Audio"
+    await this.transcribeCurrentAudio();
   }
 
   /**
@@ -304,7 +327,16 @@ export class App {
     const questionInput = this.root.querySelector<HTMLInputElement>('#question-input');
     const partSelect = this.root.querySelector<HTMLSelectElement>('#part-select');
     const question = questionInput?.value.trim() || undefined;
-    const part = partSelect?.value ? (Number(partSelect.value) as 1 | 2 | 3) : undefined;
+    let partVal = partSelect?.value ? Number(partSelect.value) as 1 | 2 | 3 : undefined;
+
+    // Auto-suggest: if audio > 60s but Part 1 selected, upgrade to Part 2 and warn
+    if (this.lastAudioDuration > 60 && partVal === 1) {
+      partVal = 2;
+      if (partSelect) partSelect.value = '2';
+      this.setStatus('⚠️ Audio is >60s — auto-switched to Part 2 (Long Turn) for accurate scoring.');
+      await new Promise(r => setTimeout(r, 1800));
+    }
+    const part = partVal;
 
     try {
       if (!this.transcriber) {
@@ -427,7 +459,7 @@ export class App {
 
     const internal = st.lastSilences.filter((s) => s.kind === 'internal');
     const trailing = st.lastSilences.find((s) => s.kind === 'trailing');
-    const longest = st.lastSilences.reduce<{ ms: number; at: number } | null>(
+    const longest = internal.reduce<{ ms: number; at: number } | null>(
       (acc, s) => (acc === null || s.durationMs > acc.ms ? { ms: s.durationMs, at: s.start } : acc),
       null,
     );
